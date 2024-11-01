@@ -1,44 +1,29 @@
-#define DIOD_PORT_RED   9
-#define DIOD_PORT_GREEN 8
-#define BUTTON_PORT     7
-bool port_enabled_red;
-bool port_enabled_green;
-String recieve;
+#define PORT_DIOD_RED 8
+int analog_read = 0;
+float potential = 0;
+int sleep = 0;
+int tmp;
 
 void setup() {
-  // put your setup code here, to run once:
   Serial.begin(9600);
-  Serial.println("[INFO] Interface online");
-
-  pinMode(DIOD_PORT_RED, OUTPUT);
-  pinMode(DIOD_PORT_GREEN, OUTPUT);
-  pinMode(BUTTON_PORT, INPUT_PULLUP);
-  port_enabled_red = 0;
-  port_enabled_green = 0;
-  recieve = "";
-}
-
-bool switch_port(bool state, int port_number) {
-  if (state) {
-    digitalWrite(port_number, LOW);
-    return 0;
-  } else {
-    digitalWrite(port_number, HIGH);
-    return 1;
-  }
+  pinMode(PORT_DIOD_RED, OUTPUT);
 }
 
 void loop() {
-  if(Serial.available() > 0) {
-    recieve = Serial.readStringUntil('\n');
-    Serial.println("[INFO] Recevied \"" + recieve + "\"");
-
-    if (recieve == "RED" || recieve == "R") {
-      port_enabled_red = switch_port(port_enabled_red, DIOD_PORT_RED);
-      Serial.println("[INFO] Setting red diod to " + String(port_enabled_red));
-    } else if (recieve == "GREEN" || recieve == "G") {
-      port_enabled_green = switch_port(port_enabled_green, DIOD_PORT_GREEN);
-      Serial.println("[INFO] Setting green diod to " +  String(port_enabled_green));
-    }
+  tmp = analogRead(A5);
+  if (analog_read != tmp) {
+    analog_read = tmp;
+    potential = analog_read * (5./1024.);
+    Serial.println("[INFO] ANALOG A5 READ " + String(potential) + "V");
+    sleep = analog_read * 10;
+    if (sleep > 10000) sleep = 10000;
+    if (sleep < 40 ) sleep = 40;
+    Serial.println("[INFO] setting sleep to " + String(sleep));
   }
+
+  delay(sleep);
+  digitalWrite(PORT_DIOD_RED, HIGH);
+  delay(sleep);
+  digitalWrite(PORT_DIOD_RED, LOW);
+
 }
