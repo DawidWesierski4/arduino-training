@@ -1,29 +1,23 @@
-#define PORT_DIOD_RED 8
-int analog_read = 0;
-float potential = 0;
-int sleep = 0;
-int tmp;
+#define PORT_PWM_DIOD_RED 3
+int fill_factor, change;
 
 void setup() {
   Serial.begin(9600);
-  pinMode(PORT_DIOD_RED, OUTPUT);
+  pinMode(PORT_PWM_DIOD_RED, OUTPUT);
+  fill_factor = 0;
+  change = 2;
+  Serial.println("[INFO] Starting the PWM Arduino program");
 }
 
 void loop() {
-  tmp = analogRead(A5);
-  if (analog_read != tmp) {
-    analog_read = tmp;
-    potential = analog_read * (5./1024.);
-    Serial.println("[INFO] ANALOG A5 READ " + String(potential) + "V");
-    sleep = analog_read * 10;
-    if (sleep > 10000) sleep = 10000;
-    if (sleep < 40 ) sleep = 40;
-    Serial.println("[INFO] setting sleep to " + String(sleep));
+  analogWrite(PORT_PWM_DIOD_RED, fill_factor);
+
+  if(fill_factor < 255) {
+    fill_factor += change;
+  } else {
+    fill_factor = 0;
   }
 
-  delay(sleep);
-  digitalWrite(PORT_DIOD_RED, HIGH);
-  delay(sleep);
-  digitalWrite(PORT_DIOD_RED, LOW);
+  delay(50);
 
 }
