@@ -180,12 +180,12 @@ void loop() {
   reading_analog = analogRead(PORT_ANALOG_FOTO_RES);
   LOG_DEBUG("Reading analog A5" + String(reading_analog));
 
-  reading_analog = map(reading_analog, 0, 1000, 0, 180);
+  reading_analog = map(reading_analog, 0, 1000, 179, 0);
   LOG_DEBUG("Mapped to 180 reading analog = " + String(reading_analog));
 
   if (abs(reading_analog - servo_1.current_position) > 5) {
     servo_1.position = reading_analog;
-    LOG_INFO("Detected light intensity change " + String(servo_1.position / 180. * 100) + "%");
+    LOG_INFO("Detected light intensity change " + String((180 - servo_1.position) / 180. * 100) + "%");
     delay(150);
   }
 
