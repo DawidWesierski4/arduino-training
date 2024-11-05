@@ -1,6 +1,5 @@
 #include <Servo.h>
-
-#define PORT_PWM_SERVO_1     3
+#include <LiquidCrystal.h>
 #define PORT_ANALOG_FOTO_RES A5
 
 #define LOG_LEVEL_DEBUG   0
@@ -15,117 +14,137 @@
 
 String recieve_serial;
 int log_level;
-int reading_analog;
+int displayed_level, ret;
+float tolerance;
+int general_delay;
 
-struct Servo_pwm {
+class ServoPwm {
+public:
   Servo servo;
   int index;
   int position;
   int current_position;
   int change;
-  int delay;
+  int delay_time;
   bool automatic;
-} servo_1;
+
+  ServoPwm(int idx) : index(idx), position(0), current_position(0), change(0), delay_time(0), automatic(false) {}
+
+  void parseToken(String token) {
+    int separatorIndex = token.indexOf('=');
+    if (separatorIndex == -1) {
+      LOG_ERROR("Invalid token: " + token);
+      return;
+    }
+
+    String key = token.substring(0, separatorIndex);
+    String value = token.substring(separatorIndex + 1);
+
+    if (key == "automatic") {
+      automatic = (value.toInt() != 0);
+      LOG_INFO("Set servo " + String(index) + " automatic to " + String(automatic));
+    } else if (key == "position") {
+      position = value.toInt();
+      LOG_INFO("Set servo " + String(index) + " position to " + String(position));
+    } else if (key == "change") {
+      change = value.toInt();
+      LOG_INFO("Set servo " + String(index) + " change to " + String(change));
+    } else if (key == "delay") {
+
+      delay_time = value.toInt();
+      LOG_INFO("Set servo " + String(index) + " delay to " + String(delay_time));
+    } else {
+      LOG_ERROR("Servo " + String(index) + " Unknown parameter: " + key);
+    }
+  }
+
+  void parseSteeringString(String input) {
+    int index;
+    String token;
+
+    if (input.startsWith("servo")) {
+      index = input.indexOf(' ');
+      input = input.substring(index + 1);
+    }
+    input.trim();
+
+    while ((index = input.indexOf(' ')) != -1) {
+      token = input.substring(0, index);
+      input = input.substring(index + 1);
+      parseToken(token);
+    }
+
+    if (input.length() > 0) {
+      parseToken(input);
+    }
+  }
+
+  void controlMechanism(String steer = "") {
+    if (steer.length() == 0 && steer.startsWith("servo_" + String(index))) {
+      parseSteeringString(steer);
+    }
+
+    if (automatic) {
+      if (change < 0 && position <= 0) {
+        position = 180;
+      } else if (change > 0 && position >= 180) {
+        position = 0;
+      } else {
+        position += change;
+      }
+      servo.write(position);
+      current_position = position;
+      delay(delay_time);
+    } else {
+      if (position < 180 && current_position != position) {
+        LOG_INFO("Setting the servo position to " + String(position));
+        servo.write(position);
+        current_position = position;
+      }
+    }
+  }
+};
+
+class FotoresistorReader {
+public:
+  int index;
+  int port;
+  int maximum_light_level;
+  int minimum_light_level;
+  int light_level;
+
+  FotoresistorReader(int idx, int port) : index(idx), port(port), maximum_light_level(1000), minimum_light_level(500), light_level(0) {};
+
+  int readBrightness(void) {
+    light_level = analogRead(port);
+
+    if (light_level < minimum_light_level) {
+        minimum_light_level = light_level;
+    } else if (light_level > maximum_light_level) {
+      maximum_light_level = light_level;
+    }
+
+    int brightness_percentage = map(light_level, maximum_light_level, minimum_light_level, 0, 100);
+    return brightness_percentage;
+  }
+};
+
+FotoresistorReader foto_read(0, A5);
+LiquidCrystal lcd(2, 3, 4, 5, 6, 7);
 
 
 void setup() {
   Serial.begin(9600);
-  pinMode(PORT_PWM_SERVO_1, OUTPUT);
   recieve_serial = "";
-  servo_1.position = 0;
-  servo_1.index = 1;
-  servo_1.change = 6;
-  servo_1.automatic = false;
-  servo_1.delay = 250;
-  servo_1.servo.attach(PORT_PWM_SERVO_1);
-  LOG_INFO("Starting the PWM servo Arduino program");
   log_level = 1;
-}
-
-void servo_parse_token(Servo_pwm &servo, String token) {
-  int separatorIndex = token.indexOf('=');
-
-  if (separatorIndex == -1) {
-    LOG_ERROR("Invalid token: " + token);
-    return;
-  }
-
-  String key = token.substring(0, separatorIndex);
-  String value = token.substring(separatorIndex + 1);
-
-  if (key == "automatic") {
-    servo.automatic = (value.toInt() != 0);
-    LOG_INFO("Set servo " + String(servo.index) + " automatic to " + String(servo.automatic));
-  } else if (key == "position") {
-    servo.position = value.toInt();
-    LOG_INFO("Set servo " + String(servo.index) + " position to " + String(servo.position));
-  } else if (key == "change") {
-    servo.change = value.toInt();
-    LOG_INFO("Set servo " + String(servo.index) + " change to " + String(servo.change));
-  } else if (key == "delay") {
-    servo.delay = value.toInt();
-    LOG_INFO("Set servo " + String(servo.index) + " delay to " + String(servo.delay));
-  } else {
-    LOG_ERROR("servo" + String(servo.index) + " Unknown parameter: " + key);
-  }
-}
-
-void servo_parse_steering_string(Servo_pwm &servo, String input) {
-  int index;
-  String token;
-
-  // if starts with servo cut the servo_nmb at the begginging
-  if (input.startsWith("servo")) {
-    index = input.indexOf(' ');
-    input = input.substring(index + 1);
-  }
-  input.trim();
-
-  while ((index = input.indexOf(' ')) != -1) {
-    token = input.substring(0, index);
-    input = input.substring(index + 1);
-    servo_parse_token(servo, token);
-  }
-
-  // last command not handled by while
-  if (input.length() > 0) {
-    servo_parse_token(servo, input);
-  }
-}
-
-void servo_control_mechanism(Servo_pwm &servo, String steer = "") {
-  // Control section
-
-  // global controls
-  if (recieve_serial != "") {
-    steer = recieve_serial;
-  }
-
-  if (steer.startsWith("servo_" + String(servo.index))) {
-    servo_parse_steering_string(servo, steer);
-  }
-
-  // Automatic mode
-  if (servo.automatic) {
-    if (servo.change < 0 && servo.position <= 0) {
-      servo.position = 180;
-    } else if (servo.change > 0 && servo.position >= 180) {
-      servo.position = 0;
-    } else {
-      servo.position += servo.change;
-    }
-    servo.servo.write(servo.position);
-    servo.current_position = servo.position;
-    delay(servo.delay);
-  
-  // Manual mode
-  } else {
-    if (servo.position < 180 && servo.current_position != servo.position) {
-      LOG_INFO("Setting the servo position to " + String(servo.position));
-      servo.servo.write(servo.position);
-      servo.current_position = servo.position;
-    }
-  }
+  lcd.begin(16, 2);
+  lcd.clear();
+  lcd.setCursor(0, 0); //Ustawienie kursora
+  lcd.print("LIGHT LEVEL");
+  lcd.setCursor(0,1);
+  displayed_level = 0;
+  tolerance = 1.05; 
+  general_delay = 1000;
 }
 
 void general_parse_token(String token) {
@@ -176,19 +195,15 @@ void loop() {
     LOG_INFO("Received \"" + recieve_serial + "\"");
   }
   general_parse_steering_string(recieve_serial);
+  ret = foto_read.readBrightness();
+  LOG_INFO("ret = " + String(ret) + " ligt_level = " + String(foto_read.light_level) + "  max " + String( foto_read.maximum_light_level));
 
-  reading_analog = analogRead(PORT_ANALOG_FOTO_RES);
-  LOG_DEBUG("Reading analog A5" + String(reading_analog));
+  lcd.setCursor(0, 1);
+  lcd.print(String(ret));
+  lcd.print(" %");
+  displayed_level = ret;
 
-  reading_analog = map(reading_analog, 0, 1000, 179, 0);
-  LOG_DEBUG("Mapped to 180 reading analog = " + String(reading_analog));
 
-  if (abs(reading_analog - servo_1.current_position) > 5) {
-    servo_1.position = reading_analog;
-    LOG_INFO("Detected light intensity change " + String((180 - servo_1.position) / 180. * 100) + "%");
-    delay(150);
-  }
-
-  servo_control_mechanism(servo_1);
-  recieve_serial = "";
+  
+  delay(general_delay);
 }
